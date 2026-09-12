@@ -157,7 +157,7 @@
 
             if (output && Array.isArray(output.contatos)) {
                 if (output.contatos.length === 0) {
-                    selectContato.innerHTML = "<option value=''>Nenhum contato encontrado no cadastro desta empresa</option>";
+                    selectContato.innerHTML = "<option value=''>Nenhum contato cadastrado para esta empresa</option>";
                 } else {
                     selectContato.innerHTML = "<option value=''>-- Selecione o Contato --</option>" +
                         output.contatos.map(c => `<option value="${c.id}">${c.nome}</option>`).join("");
