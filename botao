@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Criar Negociação - Fitstock</title>
+    <!-- ZOHO CRM WIDGET SDK -->
+    <script src="https://live.zwidgets.com/js-sdk/1.2/ZohoEmbededAppSDK.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 18px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background: #ffffff;
+            color: #1e293b;
+        }
+        .form-group { margin-bottom: 14px; }
+        label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: #475569; }
+        select, input {
+            width: 100%;
+            padding: 9px 11px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            font-size: 13px;
+            background: #fff;
+        }
+        select:focus, input:focus { outline: none; border-color: #2563eb; }
+        .row { display: flex; gap: 10px; }
+        .row .form-group { flex: 1; }
+        .btn-submit {
+            width: 100%;
+            background: #2563eb;
+            color: #ffffff;
+            border: none;
+            padding: 11px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 6px;
+            transition: background 0.2s;
+        }
+        .btn-submit:hover { background: #1d4ed8; }
+        .status { margin-top: 12px; font-size: 13px; padding: 10px; border-radius: 6px; display: none; }
+        .status.loading { display: block; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+        .status.success { display: block; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+        .status.error { display: block; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    </style>
+</head>
+<body>
+
+<div class="form-group">
+    <label for="empresaSelect">Empresa Parceira (do Subformulário)</label>
+    <select id="empresaSelect" onchange="aoSelecionarEmpresa()">
+        <option value="">Carregando empresas...</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="contatoSelect">Contato da Empresa</label>
+    <select id="contatoSelect">
+        <option value="">Selecione primeiro uma empresa</option>
+    </select>
+</div>
+
+<div class="row">
+    <div class="form-group">
+        <label for="qtdInput">Quantidade Desejada (Opcional)</label>
+        <input type="number" id="qtdInput" placeholder="Ex: 1000">
+    </div>
+    <div class="form-group">
+        <label for="precoInput">Preço Unitário R$ (Opcional)</label>
+        <input type="number" step="0.01" id="precoInput" placeholder="Ex: 12.50">
+    </div>
+</div>
+
+<button class="btn-submit" onclick="confirmarCriacao()">Criar Negociação</button>
+<div id="status" class="status"></div>
+
+<script>
+    const FUNCTION_API_NAME = "buscarempresaswidget";
+    let currentOppId = null;
+    let contextData = null;
+
+    function setStatus(msg, type) {
+        const s = document.getElementById("status");
+        if (!type) { s.style.display = "none"; return; }
+        s.textContent = msg;
+        s.className = "status " + type;
+    }
+
+    async function carregarDados() {
+        setStatus("Carregando opções da Oportunidade...", "loading");
+        const reqData = { arguments: JSON.stringify({ oppId: currentOppId }) };
+
+        try {
+            const response = await ZOHO.CRM.FUNCTIONS.execute(FUNCTION_API_NAME, reqData);
+            let output = response.output || (response.details && response.details.output);
+            if (typeof output === "string") { try { output = JSON.parse(output); } catch(e){} }
+
+            if (output && Array.isArray(output.empresas)) {
+                contextData = output;
+                const select = document.getElementById("empresaSelect");
+
+                if (output.empresas.length === 0) {
+                    select.innerHTML = "<option value=''>Nenhuma empresa no subformulário</option>";
+                    setStatus("Nenhuma empresa encontrada no subformulário deste registro.", "error");
+                    return;
+                }
+
+                select.innerHTML = "<option value=''>-- Selecione a Empresa --</option>" +
+                    output.empresas.map(e => `<option value="${e.id}">${e.nome}</option>`).join("");
+
+                setStatus("", "");
+            }
+        } catch (e) {
+            setStatus("Erro ao carregar dados do CRM.", "error");
+        }
+    }
+
+    function aoSelecionarEmpresa() {
+        const empresaId = document.getElementById("empresaSelect").value;
+        const selectContato = document.getElementById("contatoSelect");
+
+        if (!empresaId || !contextData) {
+            selectContato.innerHTML = "<option value=''>Selecione primeiro uma empresa</option>";
+            return;
+        }
+
+        const empresa = contextData.empresas.find(e => e.id === empresaId);
+        if (empresa && empresa.contatos && empresa.contatos.length > 0) {
+            selectContato.innerHTML = empresa.contatos.map(c => {
+                const isSelected = (empresa.contato_persistido === c.id) ? "selected" : "";
+                return `<option value="${c.id}" ${isSelected}>${c.nome}</option>`;
+            }).join("");
+        } else {
+            selectContato.innerHTML = "<option value=''>Nenhum contato cadastrado para esta empresa</option>";
+        }
+    }
+
+    async function confirmarCriacao() {
+        const empresaId = document.getElementById("empresaSelect").value;
+        const contatoId = document.getElementById("contatoSelect").value;
+        const qtd = document.getElementById("qtdInput").value;
+        const preco = document.getElementById("precoInput").value;
+
+        if (!empresaId) {
+            alert("Por favor, selecione uma empresa parceira.");
+            return;
+        }
+
+        setStatus("Criando Negociação no CRM...", "loading");
+
+        const empObj = contextData.empresas.find(e => e.id === empresaId);
+        const empresaNome = empObj ? empObj.nome : "";
+
+        let sellerAccountId = "", sellerAccountName = "", sellerContactId = "";
+        let buyerAccountId = "", buyerAccountName = "", buyerContactId = "";
+
+        const tipoOpp = (contextData.tipo_oportunidade || "").toLowerCase();
+
+        if (tipoOpp === "venda" || tipoOpp === "sales") {
+            sellerAccountId = contextData.empresa_origem_id;
+            sellerAccountName = contextData.empresa_origem_nome;
+            sellerContactId = contextData.contato_origem_id;
+
+            buyerAccountId = empresaId;
+            buyerAccountName = empresaNome;
+            buyerContactId = contatoId;
+        } else {
+            buyerAccountId = contextData.empresa_origem_id;
+            buyerAccountName = contextData.empresa_origem_nome;
+            buyerContactId = contextData.contato_origem_id;
+
+            sellerAccountId = empresaId;
+            sellerAccountName = empresaNome;
+            sellerContactId = contatoId;
+        }
+
+        const dealName = `[${contextData.produto_nome}] ${sellerAccountName} x ${buyerAccountName}`;
+
+        const payloadCriacao = {
+            "Deal_Name": dealName,
+            "Nome_Produto": contextData.produto_id ? { "id": contextData.produto_id } : null,
+            "Account_Name": sellerAccountId ? { "id": sellerAccountId } : null,
+            "Contact_Name": sellerContactId ? { "id": sellerContactId } : null,
+            "Empresa_Buyer": buyerAccountId ? { "id": buyerAccountId } : null,
+            "Comprador1": buyerContactId ? { "id": buyerContactId } : null,
+            "Quantidade_Desejada": qtd,
+            "Preco_Unitario_Desejado": preco
+        };
+
+        const reqData = {
+            arguments: JSON.stringify({ action: "criar_negocio", payload: payloadCriacao })
+        };
+
+        try {
+            const response = await ZOHO.CRM.FUNCTIONS.execute(FUNCTION_API_NAME, reqData);
+            let output = response.output || (response.details && response.details.output);
+            if (typeof output === "string") { try { output = JSON.parse(output); } catch(e){} }
+
+            if (output && output.status === "success" && output.deal_id) {
+                setStatus("Negociação criada com sucesso! Redirecionando...", "success");
+                ZOHO.CRM.UI.Record.open({ Entity: "Deals", RecordID: output.deal_id });
+            } else {
+                setStatus("Erro ao criar Negociação no CRM.", "error");
+            }
+        } catch (err) {
+            setStatus("Falha na comunicação com o backend.", "error");
+        }
+    }
+
+    function registrarZoho() {
+        if (typeof ZOHO === "undefined") {
+            setTimeout(registrarZoho, 200);
+            return;
+        }
+
+        ZOHO.embeddedApp.on("PageLoad", function(data) {
+            currentOppId = data && data.EntityId ? data.EntityId : null;
+            if (currentOppId) carregarDados();
+        });
+
+        ZOHO.embeddedApp.init();
+    }
+
+    registrarZoho();
+</script>
+</body>
+</html>
