@@ -104,7 +104,7 @@
             return;
         }
 
-        setStatus("Carregando opções da Oportunidade...", "loading");
+        setStatus("Carregando empresas...", "loading");
         const reqData = { arguments: JSON.stringify({ oppId: currentOppId }) };
 
         try {
@@ -133,20 +133,40 @@
         }
     }
 
-    function aoSelecionarEmpresa() {
+    async function aoSelecionarEmpresa() {
         const empresaId = document.getElementById("empresaSelect").value;
         const selectContato = document.getElementById("contatoSelect");
 
-        if (!empresaId || !contextData) {
+        if (!empresaId) {
             selectContato.innerHTML = "<option value=''>Selecione primeiro uma empresa</option>";
             return;
         }
 
-        const empresa = contextData.empresas.find(e => e.id === empresaId);
-        if (empresa && empresa.contatos && empresa.contatos.length > 0) {
-            selectContato.innerHTML = empresa.contatos.map(c => `<option value="${c.id}">${c.nome}</option>`).join("");
-        } else {
-            selectContato.innerHTML = "<option value=''>Contato Principal da Conta</option>";
+        selectContato.innerHTML = "<option value=''>Buscando contatos da empresa no CRM...</option>";
+
+        const reqData = {
+            arguments: JSON.stringify({
+                action: "buscar_contatos_empresa",
+                payload: { empresa_id: empresaId }
+            })
+        };
+
+        try {
+            const response = await ZOHO.CRM.FUNCTIONS.execute(FUNCTION_API_NAME, reqData);
+            const output = parseZohoOutput(response);
+
+            if (output && Array.isArray(output.contatos)) {
+                if (output.contatos.length === 0) {
+                    selectContato.innerHTML = "<option value=''>Nenhum contato encontrado no cadastro desta empresa</option>";
+                } else {
+                    selectContato.innerHTML = "<option value=''>-- Selecione o Contato --</option>" +
+                        output.contatos.map(c => `<option value="${c.id}">${c.nome}</option>`).join("");
+                }
+            } else {
+                selectContato.innerHTML = "<option value=''>Erro ao carregar contatos</option>";
+            }
+        } catch (e) {
+            selectContato.innerHTML = "<option value=''>Erro na busca de contatos</option>";
         }
     }
 
@@ -228,7 +248,6 @@
         }
 
         ZOHO.embeddedApp.on("PageLoad", function(data) {
-            // Mapeamento abrangente de extração de ID do Pop-up Widget
             if (data) {
                 if (data.EntityId) {
                     currentOppId = Array.isArray(data.EntityId) ? data.EntityId[0] : data.EntityId;
