@@ -92,19 +92,18 @@
 
     function parseZohoOutput(response) {
         let output = response.output || (response.details && response.details.output);
-        
-        // Loop de deserealização para tratar JSONs encapsulados em string
         while (typeof output === "string") {
-            try {
-                output = JSON.parse(output);
-            } catch (e) {
-                break;
-            }
+            try { output = JSON.parse(output); } catch (e) { break; }
         }
         return output;
     }
 
     async function carregarDados() {
+        if (!currentOppId) {
+            setStatus("ID da Oportunidade não identificado.", "error");
+            return;
+        }
+
         setStatus("Carregando opções da Oportunidade...", "loading");
         const reqData = { arguments: JSON.stringify({ oppId: currentOppId }) };
 
@@ -127,10 +126,10 @@
 
                 setStatus("", "");
             } else {
-                setStatus("Falha ao estruturar lista de empresas.", "error");
+                setStatus("Falha ao carregar lista de empresas.", "error");
             }
         } catch (e) {
-            setStatus("Erro ao carregar dados do CRM.", "error");
+            setStatus("Erro de comunicação com o backend.", "error");
         }
     }
 
@@ -147,7 +146,7 @@
         if (empresa && empresa.contatos && empresa.contatos.length > 0) {
             selectContato.innerHTML = empresa.contatos.map(c => `<option value="${c.id}">${c.nome}</option>`).join("");
         } else {
-            selectContato.innerHTML = "<option value=''>Usar Contato Principal da Conta</option>";
+            selectContato.innerHTML = "<option value=''>Contato Principal da Conta</option>";
         }
     }
 
@@ -215,10 +214,10 @@
                 setStatus("Negociação criada com sucesso! Redirecionando...", "success");
                 ZOHO.CRM.UI.Record.open({ Entity: "Deals", RecordID: output.deal_id });
             } else {
-                setStatus("Erro ao criar Negociação no CRM.", "error");
+                setStatus("Erro ao criar Negociação.", "error");
             }
         } catch (err) {
-            setStatus("Falha na comunicação com o backend.", "error");
+            setStatus("Falha ao processar requisição.", "error");
         }
     }
 
@@ -229,8 +228,22 @@
         }
 
         ZOHO.embeddedApp.on("PageLoad", function(data) {
-            currentOppId = data && data.EntityId ? data.EntityId : null;
-            if (currentOppId) carregarDados();
+            // Mapeamento abrangente de extração de ID do Pop-up Widget
+            if (data) {
+                if (data.EntityId) {
+                    currentOppId = Array.isArray(data.EntityId) ? data.EntityId[0] : data.EntityId;
+                } else if (data.EntityIdList && data.EntityIdList.length > 0) {
+                    currentOppId = data.EntityIdList[0];
+                } else if (data.recordId) {
+                    currentOppId = data.recordId;
+                }
+            }
+
+            if (currentOppId) {
+                carregarDados();
+            } else {
+                setStatus("Não foi possível capturar o ID da Oportunidade.", "error");
+            }
         });
 
         ZOHO.embeddedApp.init();
