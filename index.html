@@ -90,14 +90,27 @@
         s.className = "status " + type;
     }
 
+    function parseZohoOutput(response) {
+        let output = response.output || (response.details && response.details.output);
+        
+        // Loop de deserealização para tratar JSONs encapsulados em string
+        while (typeof output === "string") {
+            try {
+                output = JSON.parse(output);
+            } catch (e) {
+                break;
+            }
+        }
+        return output;
+    }
+
     async function carregarDados() {
         setStatus("Carregando opções da Oportunidade...", "loading");
         const reqData = { arguments: JSON.stringify({ oppId: currentOppId }) };
 
         try {
             const response = await ZOHO.CRM.FUNCTIONS.execute(FUNCTION_API_NAME, reqData);
-            let output = response.output || (response.details && response.details.output);
-            if (typeof output === "string") { try { output = JSON.parse(output); } catch(e){} }
+            const output = parseZohoOutput(response);
 
             if (output && Array.isArray(output.empresas)) {
                 contextData = output;
@@ -113,6 +126,8 @@
                     output.empresas.map(e => `<option value="${e.id}">${e.nome}</option>`).join("");
 
                 setStatus("", "");
+            } else {
+                setStatus("Falha ao estruturar lista de empresas.", "error");
             }
         } catch (e) {
             setStatus("Erro ao carregar dados do CRM.", "error");
@@ -130,12 +145,9 @@
 
         const empresa = contextData.empresas.find(e => e.id === empresaId);
         if (empresa && empresa.contatos && empresa.contatos.length > 0) {
-            selectContato.innerHTML = empresa.contatos.map(c => {
-                const isSelected = (empresa.contato_persistido === c.id) ? "selected" : "";
-                return `<option value="${c.id}" ${isSelected}>${c.nome}</option>`;
-            }).join("");
+            selectContato.innerHTML = empresa.contatos.map(c => `<option value="${c.id}">${c.nome}</option>`).join("");
         } else {
-            selectContato.innerHTML = "<option value=''>Nenhum contato cadastrado para esta empresa</option>";
+            selectContato.innerHTML = "<option value=''>Usar Contato Principal da Conta</option>";
         }
     }
 
@@ -197,8 +209,7 @@
 
         try {
             const response = await ZOHO.CRM.FUNCTIONS.execute(FUNCTION_API_NAME, reqData);
-            let output = response.output || (response.details && response.details.output);
-            if (typeof output === "string") { try { output = JSON.parse(output); } catch(e){} }
+            const output = parseZohoOutput(response);
 
             if (output && output.status === "success" && output.deal_id) {
                 setStatus("Negociação criada com sucesso! Redirecionando...", "success");
